@@ -1,6 +1,6 @@
 const miio = require('miio');
-const idleRequestTimeout = 500;
-const repeatRequestTimeout = 100;
+const idleRequestTimeout = 250;
+const repeatRequestTimeout = 50;
 const repeatAttemptsCount = 20;
 
 module.exports = class {
@@ -46,13 +46,11 @@ module.exports = class {
     if ('get' in cconfig) {
       let cconfigget = cconfig.get;
       characteristic.on('get', async function(callback) {
-        this.log.info(`[${cconfig.id}]-[GET]`);
         if (!this.verifyDevice(callback)) {
           return;
         }
 
         this.getCharacteristicValue(cconfig.id, cconfigget).then(result=>{
-          this.log.info(`[${cconfig.id}]-[GET] value`, result.value[0].value);
           cconfigget.response_callback(this, result.value, callback);
         }).catch(err => {
           this.log.warn(`[${cconfig.id}]-[GET] Error:`, err);
@@ -64,7 +62,7 @@ module.exports = class {
     if ('set' in cconfig) {
       let cconfigset = cconfig.set;
       characteristic.on('set', async function(value, callback) {
-        this.log.info(`[${cconfig.id}]-[SET]`, value);
+        this.log.info(`[${cconfig.id}]-[SET]`)
         if (!this.verifyDevice(callback)) {
           return;
         }
@@ -96,7 +94,7 @@ module.exports = class {
         reject(err);
         return;
       }
-      if (attemptNumber < repeatAttemptsCount + 1) {
+      if ((err.message === 'busy.') && (attemptNumber < repeatAttemptsCount + 1)) {
         this.sleep(repeatRequestTimeout)
         .then(() => this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, attemptNumber + 1));
         return;
@@ -159,28 +157,10 @@ module.exports = class {
       // let info = await this.device.call("miIO.info", []);
       // console.log(info);
       this.log.debug(`Discovered id: ${this.device.id}`);
-      this.infinitePoll();
     } catch (e) {
       this.log.warn('Fail to discover the device. Retry in 1 minute', e);
       setTimeout(() => { this.discover(); }, 60000);
     }
-  }
-
-  async infinitePoll() {
-    this.getCharacteristicValue('DS.Brightness', {
-           call_name        : 'get_properties',
-           call_args        : function (_this) {
-             return [{ did: _this.device.id, siid: 5, piid: 2, value: null }]
-           },
-           response_callback: function (_this, result, callback) {
-             callback(null, result[0].value)
-           },
-    }).then(result => {
-      this.log.info(`done polling`, result.value[0].value);
-    }).catch(err => {
-      this.log.info(`failed polling`);
-    });
-    setTimeout(() => { this.infinitePoll(); }, 30000);
   }
 
   sleep(ms) {
