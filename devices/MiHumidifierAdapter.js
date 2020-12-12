@@ -1,5 +1,4 @@
 const miio = require('miio');
-const idleRequestTimeout = 500;
 const repeatRequestTimeout = 100;
 const repeatAttemptsCount = 20;
 
@@ -34,10 +33,16 @@ module.exports = class {
     // OptionalServices
     this.optionalServices = [];
 
+    // Background polling (to keep alive)
+    this.configForPolling = null;
   }
 
   // private
   registerCharacteristic(cconfig) {
+    if (cconfig.id == 'CurrentRelativeHumidity') {
+      this.configForPolling = config;
+    }
+
     const characteristic = cconfig.service.getCharacteristic(cconfig.type);
     if (cconfig.props) {
       characteristic.setProps(cconfig.props);
@@ -92,10 +97,6 @@ module.exports = class {
     .then(value => resolve({ attempt: attemptNumber, value: value }))
     .catch(err => {
       this.log.info(`[${cconfigid}]-[GET] fucked up`, attemptNumber, err.message);
-      if (attemptNumber === 1){
-        reject(err);
-        return;
-      }
       if (attemptNumber < repeatAttemptsCount + 1) {
         this.sleep(repeatRequestTimeout)
         .then(() => this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, attemptNumber + 1));
@@ -107,24 +108,10 @@ module.exports = class {
 
   // private
   async getCharacteristicValue(cconfigid, cconfigget) {
-    let isFirstCallDone = false;
-
-    // "this.device.call" hangs after idle, so there is getCharacteristicDelayedPromise to be started with "idleRequestTimeout" delay
-    const firstGetCharacteristicPromise = new Promise((resolve, reject) => {
-      this.getCharacteristicValueAttempt(cconfigid, cconfigget, (result)=>{
-        isFirstCallDone = true;
-        resolve(result);
-      }, reject, 1);
+    const getCharacteristicPromise = new Promise((resolve, reject) => {
+      this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, 1);
     });
-    const getCharacteristicDelayedPromise = new Promise((resolve, reject) => {
-      this.sleep(idleRequestTimeout)
-      .then(() => {
-        if (!isFirstCallDone) {
-          this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, 2);
-        }
-      });
-    });
-    return await Promise.race([firstGetCharacteristicPromise, getCharacteristicDelayedPromise]);
+    return await getCharacteristicPromise;
   }
 
   // public
@@ -159,28 +146,19 @@ module.exports = class {
       // let info = await this.device.call("miIO.info", []);
       // console.log(info);
       this.log.debug(`Discovered id: ${this.device.id}`);
-      this.infinitePoll();
+      // prohibit to go to idle
+      this.infinitePolling();
     } catch (e) {
       this.log.warn('Fail to discover the device. Retry in 1 minute', e);
       setTimeout(() => { this.discover(); }, 60000);
     }
   }
 
-  async infinitePoll() {
-    this.getCharacteristicValue('DS.Brightness', {
-           call_name        : 'get_properties',
-           call_args        : function (_this) {
-             return [{ did: _this.device.id, siid: 5, piid: 2, value: null }]
-           },
-           response_callback: function (_this, result, callback) {
-             callback(null, result[0].value)
-           },
-    }).then(result => {
-      this.log.info(`done polling`, result.value[0].value);
-    }).catch(err => {
-      this.log.info(`failed polling`);
-    });
-    setTimeout(() => { this.infinitePoll(); }, 30000);
+  async infinitePolling() {
+    this.getCharacteristicValue(this.configForPolling.id, this.configForPolling.get)
+    .then(result => { this.log.info(`done polling`); })
+    .catch(err => { this.log.info(`failed polling`); });
+    setTimeout(() => { this.infinitePolling(); }, 30000);
   }
 
   sleep(ms) {
