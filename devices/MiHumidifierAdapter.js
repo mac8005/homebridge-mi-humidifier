@@ -40,7 +40,7 @@ module.exports = class {
   // private
   registerCharacteristic(cconfig) {
     if (cconfig.id == 'CurrentRelativeHumidity') {
-      this.configForPolling = config;
+      this.configForPolling = cconfig;
     }
 
     const characteristic = cconfig.service.getCharacteristic(cconfig.type);
