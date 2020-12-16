@@ -1,8 +1,13 @@
-import type * as hb from "homebridge";
-import { PlatformAccessory, DeviceOptions } from "../../platform";
-import { CommonProps, ZhimiCommon } from "./zhimi-common";
+import type * as hap from "hap-nodejs";
+import * as miio from "miio-api";
+import { DeviceOptions } from "../../platform";
+import { CommonProps, zhimiCommon } from "./zhimi-common";
+import { MiioProtocol } from "../protocols";
+import { features } from "../features";
+import { HumidifierConfig } from ".";
 
 enum Mode {
+  Off = "off", // dummy
   Silent = "silent",
   Medium = "medium",
   High = "high",
@@ -13,80 +18,29 @@ type Props = CommonProps & {
   temp_dec: number;
 };
 
-export class ZhimiHumidifierV1 extends ZhimiCommon<Props> {
-  public configureAccessory(
-    accessory: PlatformAccessory,
-    api: hb.API,
-    options: DeviceOptions,
-  ): void {
-    super.configureAccessory(accessory, api, options);
+export function zhimiV1(
+  device: miio.Device,
+  Service: typeof hap.Service,
+  Characteristic: typeof hap.Characteristic,
+  options: DeviceOptions,
+): HumidifierConfig<Props> {
+  const feat = features<Props>(Service, Characteristic);
 
-    const { Service, Characteristic } = api.hap;
+  return {
+    protocol: new MiioProtocol<Props>(device),
+    features: [
+      ...zhimiCommon<Props>(feat, options),
 
-    //
-    // Humidifier
-    //
+      feat.rotationSpeed("mode", "set_mode", {
+        modes: [Mode.Off, Mode.Silent, Mode.Medium, Mode.High],
+      }),
 
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.RotationSpeed,
-      props: {
-        minValue: 0,
-        maxValue: 3,
-      },
-      key: "mode",
-      get: {
-        map: (it) => {
-          switch (it) {
-            case Mode.Silent:
-              return 1;
-            case Mode.Medium:
-              return 2;
-            case Mode.High:
-              return 3;
-            default:
-              return 0;
-          }
-        },
-      },
-      set: {
-        call: "set_mode",
-        map: (it) => {
-          switch (it) {
-            case 1:
-              return Mode.Silent;
-            case 2:
-              return Mode.Medium;
-            case 3:
-              return Mode.High;
-            default:
-              return Mode.Silent;
-          }
-        },
-      },
-    });
-
-    //
-    // Temperature sensor
-    //
-
-    if (options.temperatureSensor?.enabled) {
-      if (options.temperatureSensor.name) {
-        this.register(accessory, {
-          service: Service.TemperatureSensor,
-          characteristic: Characteristic.Name,
-          value: options.temperatureSensor.name,
-        });
-      }
-
-      this.register(accessory, {
-        service: Service.TemperatureSensor,
-        characteristic: Characteristic.CurrentTemperature,
-        key: "temp_dec",
-        get: {
-          map: (it) => it / 10,
-        },
-      });
-    }
-  }
+      ...(options.temperatureSensor?.enabled
+        ? feat.temperatureSensor("temp_dec", {
+            name: options.temperatureSensor.name,
+            toChar: (it) => it / 10,
+          })
+        : []),
+    ],
+  };
 }

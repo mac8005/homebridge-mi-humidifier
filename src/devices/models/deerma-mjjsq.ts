@@ -1,8 +1,12 @@
-import type * as hb from "homebridge";
-import { MiioHumidifier } from "../miio";
-import { PlatformAccessory, DeviceOptions } from "../../platform";
+import type * as hap from "hap-nodejs";
+import * as miio from "miio-api";
+import { MiioProtocol } from "../protocols";
+import { DeviceOptions } from "../../platform";
+import { features } from "../features";
+import { HumidifierConfig } from ".";
 
 enum Gear {
+  Off = -1,
   Low = 1,
   Medium = 2,
   High = 3,
@@ -26,122 +30,37 @@ type Props = {
   watertankstatus: State;
 };
 
-export class DeermaHumidifierMJJSQ extends MiioHumidifier<Props> {
-  configureAccessory(
-    accessory: PlatformAccessory,
-    api: hb.API,
-    options: DeviceOptions,
-  ): void {
-    super.configureAccessory(accessory, api, options);
+export function deermaMJJSQ(
+  device: miio.Device,
+  Service: typeof hap.Service,
+  Characteristic: typeof hap.Characteristic,
+  options: DeviceOptions,
+): HumidifierConfig<Props> {
+  const feat = features<Props>(Service, Characteristic);
 
-    const { Service, Characteristic } = api.hap;
-
-    //
-    // Humidifier
-    //
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.CurrentHumidifierDehumidifierState,
-      props: {
-        validValues: [
-          Characteristic.CurrentHumidifierDehumidifierState.INACTIVE,
-          Characteristic.CurrentHumidifierDehumidifierState.HUMIDIFYING,
-        ],
-      },
-      value: Characteristic.CurrentHumidifierDehumidifierState.HUMIDIFYING,
-    });
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.TargetHumidifierDehumidifierState,
-      props: {
-        validValues: [
-          Characteristic.TargetHumidifierDehumidifierState.HUMIDIFIER,
-        ],
-      },
-      value: Characteristic.TargetHumidifierDehumidifierState.HUMIDIFIER,
-    });
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.Active,
-      key: "OnOff_State",
-      set: {
-        call: "Set_OnOff",
-      },
-    });
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.Active,
-      props: {
-        minValue: 0,
-        maxValue: 4,
-      },
-      key: "Humidifier_Gear",
-      get: {
-        map: (it) => {
-          switch (it) {
-            case Gear.Low:
-              return 1;
-            case Gear.Medium:
-              return 2;
-            case Gear.High:
-              return 3;
-            case Gear.Humidity:
-              return 4;
-            default:
-              return 0;
-          }
-        },
-      },
-      set: {
-        call: "Set_HumidifierGears",
-        map: (it) => {
-          switch (it) {
-            case 1:
-              return Gear.Low;
-            case 2:
-              return Gear.Medium;
-            case 3:
-              return Gear.High;
-            case 4:
-              return Gear.Humidity;
-            default:
-              return Gear.Low;
-          }
-        },
-      },
-    });
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.CurrentRelativeHumidity,
-      key: "Humidity_Value",
-    });
-
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.RelativeHumidityHumidifierThreshold,
-      props: {
-        minValue: 30,
-        maxValue: 80,
-      },
-      key: "HumiSet_Value",
-      set: {
-        call: "Set_HumiValue",
-        beforeSet: async (_value, _characteristic, callback) => {
+  return {
+    protocol: new MiioProtocol<Props>(device),
+    features: [
+      feat.currentState(),
+      feat.targetState(),
+      feat.active("OnOff_State", "Set_OnOff", {
+        on: State.On,
+        off: State.Off,
+      }),
+      feat.rotationSpeed("Humidifier_Gear", "Set_HumidifierGears", {
+        modes: [Gear.Off, Gear.Low, Gear.Medium, Gear.High, Gear.Humidity],
+      }),
+      feat.humidity("Humidity_Value"),
+      feat.humidityThreshold("HumiSet_Value", "Set_HumiValue", {
+        beforeSet: async (_value, _characteristic, callback, protocol) => {
           // There is special mode for humidity threshold - Gear.Humidity,
           // so set mode to Gear.Humidity.
           try {
-            const [result] = await this.device.call("Set_HumiValue", [
+            await protocol.setProp(
+              "HumiSet_Value",
+              "Set_HumiValue",
               Gear.Humidity,
-            ]);
-
-            if (result !== "ok") {
-              throw new Error(`Fail to set "Set_HumiValue"`);
-            }
+            );
           } catch (err) {
             callback(err);
             return true;
@@ -149,94 +68,38 @@ export class DeermaHumidifierMJJSQ extends MiioHumidifier<Props> {
 
           return false;
         },
-      },
-    });
+      }),
+      feat.waterLevel("waterstatus", { toChar: (it) => it * 100 }),
 
-    this.register(accessory, {
-      service: Service.HumidifierDehumidifier,
-      characteristic: Characteristic.WaterLevel,
-      key: "waterstatus",
-      get: {
-        map: (it) => it * 100,
-      },
-    });
+      ...(options.ledBulb?.enabled
+        ? feat.ledBulb("Led_State", "SetLedState", {
+            name: options.ledBulb.name,
+            modes: [State.Off, State.On],
+            off: State.Off,
+            on: State.On,
+          })
+        : []),
 
-    //
-    // Temperature sensor
-    //
+      ...(options.buzzerSwitch?.enabled
+        ? feat.buzzerSwitch("TipSound_State", "SetTipSound_Status", {
+            name: options.buzzerSwitch.name,
+            on: State.On,
+            off: State.Off,
+          })
+        : []),
 
-    if (options.temperatureSensor?.enabled) {
-      if (options.temperatureSensor.name) {
-        this.register(accessory, {
-          service: Service.TemperatureSensor,
-          characteristic: Characteristic.Name,
-          value: options.temperatureSensor.name,
-        });
-      }
+      ...(options.humiditySensor?.enabled
+        ? feat.humiditySensor("Humidity_Value", {
+            name: options.humiditySensor.name,
+          })
+        : []),
 
-      this.register(accessory, {
-        service: Service.TemperatureSensor,
-        characteristic: Characteristic.CurrentTemperature,
-        key: "TemperatureValue",
-      });
-    }
-
-    //
-    // Led bulb
-    //
-
-    if (options.ledBulb?.enabled) {
-      if (options.ledBulb.name) {
-        this.register(accessory, {
-          service: Service.Lightbulb,
-          characteristic: Characteristic.Name,
-          value: options.ledBulb.name,
-        });
-      }
-
-      this.register(accessory, {
-        service: Service.Lightbulb,
-        characteristic: Characteristic.On,
-        key: "Led_State",
-        get: {
-          map: (it) => it === State.On,
-        },
-        set: {
-          call: "SetLedState",
-          map: (it) => (it ? State.On : State.Off),
-        },
-      });
-    }
-
-    //
-    // Buzzer switch
-    //
-
-    if (options.buzzerSwitch?.enabled) {
-      if (options.buzzerSwitch.name) {
-        this.register(accessory, {
-          service: Service.Switch,
-          characteristic: Characteristic.Name,
-          value: options.buzzerSwitch.name,
-        });
-      }
-
-      this.register(accessory, {
-        service: Service.Switch,
-        characteristic: Characteristic.Active,
-        key: "TipSound_State",
-        get: {
-          map: (it) =>
-            it === State.On
-              ? Characteristic.Active.ACTIVE
-              : Characteristic.Active.INACTIVE,
-        },
-        set: {
-          call: "SetTipSound_Status",
-          map: (it) =>
-            it === Characteristic.Active.ACTIVE ? State.On : State.Off,
-        },
-      });
-    }
-  }
+      ...(options.temperatureSensor?.enabled
+        ? feat.temperatureSensor("TemperatureValue", {
+            name: options.temperatureSensor.name,
+            toChar: (it) => it,
+          })
+        : []),
+    ],
+  };
 }
