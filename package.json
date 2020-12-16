@@ -1,6 +1,6 @@
 {
   "name": "homebridge-mi-humidifier-jsq",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Xiaomi Mi Humidifier JSQ plugin for Homebridge",
   "main": "dist/index.js",
   "author": "fork@fork.com",
