@@ -48,10 +48,10 @@
   ],
   "license": "MIT",
   "main": "index.js",
-  "name": "homebridge-mi-humidifier",
+  "name": "homebridge-mi-humidifier-jsq",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/russtone/homebridge-mi-humidifier.git"
   },
-  "version": "1.4.0"
+  "version": "2.1.0"
 }
