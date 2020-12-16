@@ -1,25 +1,57 @@
 {
-  "name": "homebridge-mi-humidifier",
-  "version": "1.4.0",
+  "_from": "homebridge-mi-humidifier@latest",
+  "_id": "homebridge-mi-humidifier@1.4.0",
+  "_inBundle": false,
+  "_integrity": "sha512-f0xJBYbLQhXYPWTkw34vbW/tRbNSCOezuynX0JdnGxsRoR5r9hgGgoe9jj+imVBT5pnAuMU0wn9ddSMQuZAAaQ==",
+  "_location": "/homebridge-mi-humidifier",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "tag",
+    "registry": true,
+    "raw": "homebridge-mi-humidifier@latest",
+    "name": "homebridge-mi-humidifier",
+    "escapedName": "homebridge-mi-humidifier",
+    "rawSpec": "latest",
+    "saveSpec": null,
+    "fetchSpec": "latest"
+  },
+  "_requiredBy": [
+    "#USER",
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/homebridge-mi-humidifier/-/homebridge-mi-humidifier-1.4.0.tgz",
+  "_shasum": "4fd8ba2130d56f8b569bb3571e045b10a4f2d53a",
+  "_spec": "homebridge-mi-humidifier@latest",
+  "_where": "/homebridge",
+  "author": {
+    "name": "russtone@yandex.ru"
+  },
+  "bugs": {
+    "url": "https://github.com/russtone/homebridge-mi-humidifier/issues"
+  },
+  "bundleDependencies": false,
+  "dependencies": {
+    "miio": "^0.15.6"
+  },
+  "deprecated": false,
   "description": "Xiaomi Mi Humidifier plugin for Homebridge",
-  "main": "index.js",
-  "author": "russtone@yandex.ru",
-  "license": "MIT",
+  "engines": {
+    "homebridge": ">=0.4.38",
+    "miio": ">=0.15.6",
+    "node": ">=8.3.0"
+  },
+  "homepage": "https://github.com/russtone/homebridge-mi-humidifier#readme",
   "keywords": [
     "homebridge-plugin",
     "xiaomi",
     "humidifier"
   ],
+  "license": "MIT",
+  "main": "index.js",
+  "name": "homebridge-mi-humidifier",
   "repository": {
     "type": "git",
-    "url": "https://github.com/russtone/homebridge-mi-humidifier.git"
+    "url": "git+https://github.com/russtone/homebridge-mi-humidifier.git"
   },
-  "engines": {
-    "node": ">=8.3.0",
-    "homebridge": ">=0.4.38",
-    "miio": ">=0.15.6"
-  },
-  "dependencies": {
-    "miio": "^0.15.6"
-  }
+  "version": "1.4.0"
 }

@@ -1,7 +1,6 @@
 const miio = require('miio');
-const idleRequestTimeout = 500;
-const repeatRequestTimeout = 200;
-const repeatAttemptsCount = 5;
+const repeatRequestTimeout = 100;
+const repeatAttemptsCount = 20;
 
 module.exports = class {
   constructor(log, config, api) {
@@ -34,10 +33,16 @@ module.exports = class {
     // OptionalServices
     this.optionalServices = [];
 
+    // Background polling (to keep alive)
+    this.configForPolling = null;
   }
 
   // private
   registerCharacteristic(cconfig) {
+    if (cconfig.id == 'CurrentRelativeHumidity') {
+      this.configForPolling = cconfig;
+    }
+
     const characteristic = cconfig.service.getCharacteristic(cconfig.type);
     if (cconfig.props) {
       characteristic.setProps(cconfig.props);
@@ -46,11 +51,13 @@ module.exports = class {
     if ('get' in cconfig) {
       let cconfigget = cconfig.get;
       characteristic.on('get', async function(callback) {
+        this.log.info(`[${cconfig.id}]-[GET]`);
         if (!this.verifyDevice(callback)) {
           return;
         }
 
         this.getCharacteristicValue(cconfig.id, cconfigget).then(result=>{
+          this.log.info(`[${cconfig.id}]-[GET] value`, result.value[0].value);
           cconfigget.response_callback(this, result.value, callback);
         }).catch(err => {
           this.log.warn(`[${cconfig.id}]-[GET] Error:`, err);
@@ -62,6 +69,7 @@ module.exports = class {
     if ('set' in cconfig) {
       let cconfigset = cconfig.set;
       characteristic.on('set', async function(value, callback) {
+        this.log.info(`[${cconfig.id}]-[SET]`, value);
         if (!this.verifyDevice(callback)) {
           return;
         }
@@ -88,11 +96,8 @@ module.exports = class {
     this.device.call(cconfigget.call_name, cconfigget.call_args(this))
     .then(value => resolve({ attempt: attemptNumber, value: value }))
     .catch(err => {
-      if (attemptNumber === 1){
-        reject(err);
-        return;
-      }
-      if ((err.message === 'busy.') && (attemptNumber < repeatAttemptsCount + 1)) {
+      this.log.info(`[${cconfigid}]-[GET] fucked up`, attemptNumber, err.message);
+      if (attemptNumber < repeatAttemptsCount + 1) {
         this.sleep(repeatRequestTimeout)
         .then(() => this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, attemptNumber + 1));
         return;
@@ -103,24 +108,10 @@ module.exports = class {
 
   // private
   async getCharacteristicValue(cconfigid, cconfigget) {
-    let isFirstCallDone = false;
-
-    // "this.device.call" hangs after idle, so there is getCharacteristicDelayedPromise to be started with "idleRequestTimeout" delay
-    const firstGetCharacteristicPromise = new Promise((resolve, reject) => {
-      this.getCharacteristicValueAttempt(cconfigid, cconfigget, (result)=>{
-        isFirstCallDone = true;
-        resolve(result);
-      }, reject, 1);
+    const getCharacteristicPromise = new Promise((resolve, reject) => {
+      this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, 1);
     });
-    const getCharacteristicDelayedPromise = new Promise((resolve, reject) => {
-      this.sleep(idleRequestTimeout)
-      .then(() => {
-        if (!isFirstCallDone) {
-          this.getCharacteristicValueAttempt(cconfigid, cconfigget, resolve, reject, 2);
-        }
-      });
-    });
-    return await Promise.race([firstGetCharacteristicPromise, getCharacteristicDelayedPromise]);
+    return await getCharacteristicPromise;
   }
 
   // public
@@ -155,10 +146,19 @@ module.exports = class {
       // let info = await this.device.call("miIO.info", []);
       // console.log(info);
       this.log.debug(`Discovered id: ${this.device.id}`);
+      // prohibit to go to idle
+      this.infinitePolling();
     } catch (e) {
       this.log.warn('Fail to discover the device. Retry in 1 minute', e);
       setTimeout(() => { this.discover(); }, 60000);
     }
+  }
+
+  async infinitePolling() {
+    this.getCharacteristicValue(this.configForPolling.id, this.configForPolling.get)
+    .then(result => { this.log.info(`done polling`); })
+    .catch(err => { this.log.info(`failed polling`); });
+    setTimeout(() => { this.infinitePolling(); }, 30000);
   }
 
   sleep(ms) {
