@@ -27,7 +27,7 @@
         "model": {
           "title": "Model",
           "type": "string",
-          "enum": ["v1", "ca1", "cb1", "ca4", "mjjsq"],
+          "enum": ["v1", "ca1", "cb1", "ca4", "mjjsq", "jsq"],
           "default": "v1"
         },
         "temperatureSensor": {
